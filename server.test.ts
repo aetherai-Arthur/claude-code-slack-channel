@@ -79,6 +79,7 @@ import {
   secretPlaceholder,
   sessionPath,
   shouldPostAuditReceipt,
+  threadReplyPassesPrefixFilter,
   validateSendableRoots,
 } from './lib.ts'
 import {
@@ -523,6 +524,135 @@ describe('gate', () => {
       makeOpts({ access }),
     )
     expect(result.action).toBe('deliver')
+  })
+
+  // -- deliverPrefixes thread-ownership (root prefix check) --
+
+  const PREFIX_POLICY = { requireMention: false, allowFrom: [], deliverPrefixes: ['demo:'] }
+  const threadReply = (text: string) => ({
+    user: 'U123',
+    channel: 'C_SHARED',
+    channel_type: 'channel',
+    text,
+    ts: '2.0',
+    thread_ts: '1.0',
+  })
+
+  test('threadReplyPassesPrefixFilter: delivers reply when root matches a prefix', async () => {
+    const ok = await threadReplyPassesPrefixFilter(
+      threadReply('stop:'),
+      PREFIX_POLICY,
+      'U_BOT',
+      async () => ({ text: 'demo: !8242', user: 'U_PM' }),
+      new Map(),
+    )
+    expect(ok).toBe(true)
+  })
+
+  test('threadReplyPassesPrefixFilter: drops reply when root has a foreign prefix', async () => {
+    const ok = await threadReplyPassesPrefixFilter(
+      threadReply('LGTM'),
+      PREFIX_POLICY,
+      'U_BOT',
+      async () => ({ text: 'idea: build a widget', user: 'U_PM' }),
+      new Map(),
+    )
+    expect(ok).toBe(false)
+  })
+
+  test('threadReplyPassesPrefixFilter: delivers when root was posted by the bot', async () => {
+    const ok = await threadReplyPassesPrefixFilter(
+      threadReply('thanks'),
+      PREFIX_POLICY,
+      'U_BOT',
+      async () => ({ text: 'weekly digest', user: 'U_BOT' }),
+      new Map(),
+    )
+    expect(ok).toBe(true)
+  })
+
+  test('threadReplyPassesPrefixFilter: delivers when root mentions the bot', async () => {
+    const ok = await threadReplyPassesPrefixFilter(
+      threadReply('ok'),
+      PREFIX_POLICY,
+      'U_BOT',
+      async () => ({ text: 'hey <@U_BOT> look at this', user: 'U_PM' }),
+      new Map(),
+    )
+    expect(ok).toBe(true)
+  })
+
+  test('threadReplyPassesPrefixFilter: reply mentioning the bot bypasses the root check', async () => {
+    let fetched = 0
+    const ok = await threadReplyPassesPrefixFilter(
+      threadReply('<@U_BOT> 幫我看'),
+      PREFIX_POLICY,
+      'U_BOT',
+      async () => {
+        fetched++
+        return { text: 'idea: foo', user: 'U_PM' }
+      },
+      new Map(),
+    )
+    expect(ok).toBe(true)
+    expect(fetched).toBe(0)
+  })
+
+  test('threadReplyPassesPrefixFilter: fail-open on fetch error, verdict not cached', async () => {
+    const cache = new Map<string, boolean>()
+    const ok = await threadReplyPassesPrefixFilter(
+      threadReply('hi'),
+      PREFIX_POLICY,
+      'U_BOT',
+      async () => null,
+      cache,
+    )
+    expect(ok).toBe(true)
+    expect(cache.size).toBe(0)
+  })
+
+  test('threadReplyPassesPrefixFilter: verdict is cached — root fetched once per thread', async () => {
+    const cache = new Map<string, boolean>()
+    let fetched = 0
+    const fetchRoot = async () => {
+      fetched++
+      return { text: 'demo: !1', user: 'U_PM' }
+    }
+    expect(
+      await threadReplyPassesPrefixFilter(
+        threadReply('a'),
+        PREFIX_POLICY,
+        'U_BOT',
+        fetchRoot,
+        cache,
+      ),
+    ).toBe(true)
+    expect(
+      await threadReplyPassesPrefixFilter(
+        threadReply('b'),
+        PREFIX_POLICY,
+        'U_BOT',
+        fetchRoot,
+        cache,
+      ),
+    ).toBe(true)
+    expect(fetched).toBe(1)
+  })
+
+  test('threadReplyPassesPrefixFilter: top-level message passes through untouched', async () => {
+    let fetched = 0
+    const ok = await threadReplyPassesPrefixFilter(
+      { user: 'U123', channel: 'C_SHARED', channel_type: 'channel', text: 'anything', ts: '1.0' },
+      PREFIX_POLICY,
+      'U_BOT',
+      async () => {
+        fetched++
+        return { text: 'x', user: 'U_PM' }
+      },
+      new Map(),
+    )
+    expect(ok).toBe(true)
+    expect(fetched).toBe(0)
   })
 
   // -- allowBotIds (cross-bot coordination) --

@@ -69,6 +69,8 @@ import {
   sanitizeDisplayName,
   sanitizeFilename,
   stripBotMention,
+  type ThreadRootInfo,
+  threadReplyPassesPrefixFilter,
   validateSendableRoots,
 } from './lib.ts'
 import {
@@ -3801,6 +3803,35 @@ async function handleMessage(event: unknown): Promise<void> {
     }
 
     case 'deliver': {
+      // deliverPrefixes thread-ownership check — a thread reply in a
+      // shared channel is delivered only when the thread ROOT matched
+      // this bot's prefixes / mentioned it / was posted by it. Runs
+      // here (not in gate()) because it needs a Slack API call.
+      const channelPolicy = result.access!.channels[ev.channel as string]
+      if (channelPolicy) {
+        const ok = await threadReplyPassesPrefixFilter(
+          ev,
+          channelPolicy,
+          botUserId,
+          fetchThreadRoot,
+          threadPrefixCache,
+        )
+        if (!ok) {
+          journalWrite({
+            kind: 'gate.inbound.drop',
+            outcome: 'drop',
+            actor: 'session_owner',
+            input: {
+              channel: ev.channel as string,
+              user: ev.user as string | undefined,
+              dropReason: 'prefix.thread_root',
+            },
+            reason: 'prefix.thread_root',
+          })
+          return
+        }
+      }
+
       // ccsc-0jj — admin verb detection BEFORE delivering to Claude.
       // If the message is an admin verb (!clear / !restart / !mute /
       // !unmute), dispatch it through admin.ts and return WITHOUT
@@ -3810,6 +3841,26 @@ async function handleMessage(event: unknown): Promise<void> {
       if (handled) return
       await deliverEvent(ev, result.access!)
     }
+  }
+}
+
+/** Per-thread verdict cache for threadReplyPassesPrefixFilter — one
+ *  conversations.replies call per thread, then memoized. */
+const threadPrefixCache = new Map<string, boolean>()
+
+/** Fetch a thread's root message (text + author) for the deliverPrefixes
+ *  thread-ownership check. Returns null on any API failure — the check
+ *  fails open. Requires channels:history / groups:history (already in
+ *  the app manifest). */
+async function fetchThreadRoot(channel: string, threadTs: string): Promise<ThreadRootInfo | null> {
+  try {
+    const r = await web.conversations.replies({ channel, ts: threadTs, limit: 1, inclusive: true })
+    const m = (r.messages ?? [])[0] as Record<string, unknown> | undefined
+    if (!m) return null
+    return { text: (m.text as string) || '', user: m.user as string | undefined }
+  } catch (err) {
+    console.error('[slack] fetchThreadRoot failed (fail-open)', err)
+    return null
   }
 }
 

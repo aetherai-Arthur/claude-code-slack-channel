@@ -1884,6 +1884,55 @@ function isMentioned(event: Record<string, unknown>, botUserId: string): boolean
   return text.includes(`<@${botUserId}>`)
 }
 
+/** Root message of a Slack thread, as needed by the deliverPrefixes
+ *  thread-ownership check. `null` from the fetcher = couldn't fetch
+ *  (API error) — the check fails OPEN so a transient error never eats
+ *  a legitimate thread reply (the agent playbook still filters). */
+export interface ThreadRootInfo {
+  text: string
+  user?: string
+}
+
+/** Companion to `ChannelPolicy.deliverPrefixes` for THREAD replies (the
+ *  gate only prefix-filters top-level messages): a thread reply is
+ *  delivered only when the thread is "ours" — its ROOT message matched
+ *  one of the prefixes, mentioned the bot, or was posted by the bot.
+ *  The per-thread verdict is cached (one root fetch per thread).
+ *
+ *  Returns true (deliver) for: no prefixes configured, top-level
+ *  messages (handled by the gate), replies that @mention the bot, and
+ *  fetch failures (fail-open). */
+export async function threadReplyPassesPrefixFilter(
+  ev: Record<string, unknown>,
+  policy: ChannelPolicy,
+  botUserId: string,
+  fetchRoot: (channel: string, threadTs: string) => Promise<ThreadRootInfo | null>,
+  cache: Map<string, boolean>,
+): Promise<boolean> {
+  if (!policy.deliverPrefixes || policy.deliverPrefixes.length === 0) return true
+  const isThreadReply = typeof ev.thread_ts === 'string' && ev.thread_ts !== ev.ts
+  if (!isThreadReply) return true
+  if (isMentioned(ev, botUserId)) return true
+
+  const key = `${ev.channel}:${ev.thread_ts}`
+  const cached = cache.get(key)
+  if (cached !== undefined) return cached
+
+  const root = await fetchRoot(ev.channel as string, ev.thread_ts as string)
+  if (root === null) return true // fail-open — do not cache
+
+  const rootText = (root.text || '').trimStart()
+  const allowed =
+    (botUserId !== '' && root.user === botUserId) ||
+    (botUserId !== '' && rootText.includes(`<@${botUserId}>`)) ||
+    policy.deliverPrefixes.some((p) => p.length > 0 && rootText.startsWith(p))
+  // Crude size cap so a busy channel can't grow the cache unboundedly;
+  // a clear just costs one extra root fetch per live thread.
+  if (cache.size >= 5000) cache.clear()
+  cache.set(key, allowed)
+  return allowed
+}
+
 /** Strip a leading `<@U_BOT>` mention (with optional trailing
  *  whitespace) from a message body. Used by the admin-command parser
  *  (ccsc-3w0) so it sees normalized text — `<@U_BOT> !clear` and
