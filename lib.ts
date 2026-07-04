@@ -77,6 +77,17 @@ export interface ChannelPolicy {
    *  applies (10 msgs in 60s). Set `{ count: 0, windowMs: 0 }` only
    *  to explicitly DISABLE the limit; default-on is intentional. */
   peerBotRateLimit?: { count: number; windowMs: number }
+  /** Zero-token routing for channels shared by multiple agents: when set
+   *  (non-empty), a TOP-LEVEL message is delivered only if its text —
+   *  after stripping a leading bot mention and whitespace — starts with
+   *  one of these strings (case-sensitive). Non-matching top-level
+   *  messages are dropped before the agent session ever wakes.
+   *
+   *  Deliberately NOT applied to: thread replies (thread ownership lives
+   *  in the agent's own state, the bridge can't know it) and messages
+   *  that @mention this bot anywhere (explicit escape hatch). Absent or
+   *  empty = no prefix filtering (deliver everything, as before). */
+  deliverPrefixes?: string[]
 }
 
 export interface PendingEntry {
@@ -1826,6 +1837,20 @@ function handleChannelEvent(ev: Record<string, unknown>, opts: GateOptions): Gat
 
   if (policy.requireMention && !isMentioned(ev, botUserId)) {
     return { action: 'drop' }
+  }
+
+  // deliverPrefixes — zero-token routing for shared channels (see
+  // ChannelPolicy docs). Top-level, non-mention messages must start with
+  // one of the configured prefixes; thread replies and @bot mentions
+  // always pass through to the usual delivery path.
+  if (policy.deliverPrefixes && policy.deliverPrefixes.length > 0) {
+    const isThreadReply = typeof ev.thread_ts === 'string' && ev.thread_ts !== ev.ts
+    if (!isThreadReply && !isMentioned(ev, botUserId)) {
+      const text = ((ev.text as string | undefined) || '').trimStart()
+      if (!policy.deliverPrefixes.some((p) => p.length > 0 && text.startsWith(p))) {
+        return { action: 'drop' }
+      }
+    }
   }
 
   return { action: 'deliver', access }

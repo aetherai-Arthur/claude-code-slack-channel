@@ -70,6 +70,28 @@ Map of channel IDs to policies. Only channels listed here are monitored.
 - `allowFrom`: If non-empty, only these user IDs are delivered from this channel
 - `allowBotIds`: Opt-in list of bot user IDs allowed to deliver messages in this channel. Absent or empty (default) = all bot messages dropped. See "Multi-agent coordination" below.
 - `audit`: Audit-log projection mode for this channel. See "Audit projection (`audit`)" below. Absent or `'off'` (default) = no projection. Values: `'off'` | `'compact'` | `'full'`.
+- `deliverPrefixes`: Zero-token routing for channels shared by multiple agents. See "Shared-channel routing (`deliverPrefixes`)" below. Absent or empty (default) = deliver everything.
+
+### Shared-channel routing (`deliverPrefixes`)
+
+When several agents (each with its own bot + bridge) share one channel, every message would otherwise wake every agent's session just to be classified and ignored. `deliverPrefixes` filters at the gate instead: a **top-level** message is delivered only if its text (after trimming leading whitespace) starts with one of the listed strings (case-sensitive).
+
+```json
+"channels": {
+  "C_SHARED": {
+    "requireMention": false,
+    "allowFrom": [],
+    "deliverPrefixes": ["demo:", "list", "status", "help"]
+  }
+}
+```
+
+Deliberately NOT filtered:
+
+- **Thread replies** (`thread_ts` present and ≠ `ts`) always pass — thread ownership lives in each agent's own state, which the bridge can't know. Agent playbooks must still ignore threads they don't own.
+- **Messages that @mention this bot** anywhere in the text always pass — an explicit escape hatch to reach the agent without a prefix.
+
+A thread-root message carries `thread_ts === ts` and is treated as top-level. `requireMention` / `allowFrom` still apply first; `deliverPrefixes` only adds a further drop condition.
 
 ### Multi-agent coordination (`allowBotIds`)
 

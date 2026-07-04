@@ -406,6 +406,125 @@ describe('gate', () => {
     expect(result.action).toBe('deliver')
   })
 
+  // -- deliverPrefixes (zero-token routing on shared channels) --
+
+  test('deliverPrefixes: delivers top-level message matching a prefix', async () => {
+    const access = makeAccess({
+      channels: {
+        C_SHARED: { requireMention: false, allowFrom: [], deliverPrefixes: ['demo:', 'help'] },
+      },
+    })
+    const result = await gate(
+      {
+        user: 'U123',
+        channel: 'C_SHARED',
+        channel_type: 'channel',
+        text: 'demo: !8242',
+        ts: '1.0',
+      },
+      makeOpts({ access }),
+    )
+    expect(result.action).toBe('deliver')
+  })
+
+  test('deliverPrefixes: drops top-level message with a foreign prefix', async () => {
+    const access = makeAccess({
+      channels: { C_SHARED: { requireMention: false, allowFrom: [], deliverPrefixes: ['demo:'] } },
+    })
+    const result = await gate(
+      {
+        user: 'U123',
+        channel: 'C_SHARED',
+        channel_type: 'channel',
+        text: 'idea: build a widget',
+        ts: '1.0',
+      },
+      makeOpts({ access }),
+    )
+    expect(result.action).toBe('drop')
+  })
+
+  test('deliverPrefixes: leading whitespace is ignored before matching', async () => {
+    const access = makeAccess({
+      channels: { C_SHARED: { requireMention: false, allowFrom: [], deliverPrefixes: ['demo:'] } },
+    })
+    const result = await gate(
+      { user: 'U123', channel: 'C_SHARED', channel_type: 'channel', text: '  demo: !1', ts: '1.0' },
+      makeOpts({ access }),
+    )
+    expect(result.action).toBe('deliver')
+  })
+
+  test('deliverPrefixes: thread replies always pass', async () => {
+    const access = makeAccess({
+      channels: { C_SHARED: { requireMention: false, allowFrom: [], deliverPrefixes: ['demo:'] } },
+    })
+    const result = await gate(
+      {
+        user: 'U123',
+        channel: 'C_SHARED',
+        channel_type: 'channel',
+        text: 'stop:',
+        ts: '2.0',
+        thread_ts: '1.0',
+      },
+      makeOpts({ access }),
+    )
+    expect(result.action).toBe('deliver')
+  })
+
+  test('deliverPrefixes: @bot mention bypasses the prefix filter', async () => {
+    const access = makeAccess({
+      channels: { C_SHARED: { requireMention: false, allowFrom: [], deliverPrefixes: ['demo:'] } },
+    })
+    const result = await gate(
+      {
+        user: 'U123',
+        channel: 'C_SHARED',
+        channel_type: 'channel',
+        text: '<@U_BOT> 幫我看一下',
+        ts: '1.0',
+      },
+      makeOpts({ access, botUserId: 'U_BOT' }),
+    )
+    expect(result.action).toBe('deliver')
+  })
+
+  test('deliverPrefixes: thread-root message (thread_ts === ts) is treated as top-level', async () => {
+    const access = makeAccess({
+      channels: { C_SHARED: { requireMention: false, allowFrom: [], deliverPrefixes: ['demo:'] } },
+    })
+    const result = await gate(
+      {
+        user: 'U123',
+        channel: 'C_SHARED',
+        channel_type: 'channel',
+        text: 'random chatter',
+        ts: '3.0',
+        thread_ts: '3.0',
+      },
+      makeOpts({ access }),
+    )
+    expect(result.action).toBe('drop')
+  })
+
+  test('deliverPrefixes: empty array means no filtering', async () => {
+    const access = makeAccess({
+      channels: { C_SHARED: { requireMention: false, allowFrom: [], deliverPrefixes: [] } },
+    })
+    const result = await gate(
+      {
+        user: 'U123',
+        channel: 'C_SHARED',
+        channel_type: 'channel',
+        text: 'anything goes',
+        ts: '1.0',
+      },
+      makeOpts({ access }),
+    )
+    expect(result.action).toBe('deliver')
+  })
+
   // -- allowBotIds (cross-bot coordination) --
 
   test('drops bot message when channel has no allowBotIds (default-safe)', async () => {
