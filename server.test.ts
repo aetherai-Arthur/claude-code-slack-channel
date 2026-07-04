@@ -598,6 +598,24 @@ describe('gate', () => {
     expect(fetched).toBe(0)
   })
 
+  test('threadReplyPassesPrefixFilter: reply carrying our prefix is delivered even in a foreign thread', async () => {
+    const cache = new Map<string, boolean>()
+    let fetched = 0
+    const ok = await threadReplyPassesPrefixFilter(
+      threadReply('demo: 我想要展示這idea'),
+      PREFIX_POLICY,
+      'U_BOT',
+      async () => {
+        fetched++
+        return { text: 'idea: build a widget', user: 'U_PM' }
+      },
+      cache,
+    )
+    expect(ok).toBe(true)
+    expect(fetched).toBe(0) // prefix on the reply itself short-circuits the root fetch
+    expect(cache.size).toBe(0) // per-message verdict, thread ownership not cached
+  })
+
   test('threadReplyPassesPrefixFilter: fail-open on fetch error, verdict not cached', async () => {
     const cache = new Map<string, boolean>()
     const ok = await threadReplyPassesPrefixFilter(

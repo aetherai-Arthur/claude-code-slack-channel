@@ -1914,6 +1914,13 @@ export async function threadReplyPassesPrefixFilter(
   if (!isThreadReply) return true
   if (isMentioned(ev, botUserId)) return true
 
+  // A reply that itself starts with one of our prefixes is an explicit
+  // summon (e.g. `demo: 展示這個 idea` inside another agent's thread) —
+  // deliver regardless of who owns the thread. Do NOT cache: this is a
+  // per-message verdict, not a thread-ownership one.
+  const replyText = ((ev.text as string | undefined) || '').trimStart()
+  if (policy.deliverPrefixes.some((p) => p.length > 0 && replyText.startsWith(p))) return true
+
   const key = `${ev.channel}:${ev.thread_ts}`
   const cached = cache.get(key)
   if (cached !== undefined) return cached
