@@ -86,7 +86,7 @@ When several agents (each with its own bot + bridge) share one channel, every me
 }
 ```
 
-**Thread replies** (`thread_ts` present and ≠ `ts`) are filtered by their thread's ROOT message instead: the reply is delivered only when the root matched one of the prefixes, was posted by this bot, or @mentions this bot. The root is fetched once per thread via `conversations.replies` (needs `channels:history` / `groups:history`, already in the manifest) and the verdict is cached; a fetch failure fails OPEN (deliver) so a transient API error never eats a legitimate reply.
+**Thread replies** (`thread_ts` present and ≠ `ts`) are filtered by their thread's ROOT message instead: the reply is delivered only when the root matched one of the prefixes, was posted by this bot, or @mentions this bot. Exception: a reply that ITSELF starts with one of the prefixes is an explicit summon and is always delivered, regardless of who owns the thread. The root is fetched once per thread via `conversations.replies` (needs `channels:history` / `groups:history`, already in the manifest) and the verdict is cached; a fetch failure fails OPEN (deliver) so a transient API error never eats a legitimate reply.
 
 Deliberately NOT filtered:
 
