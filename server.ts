@@ -54,6 +54,7 @@ import {
   deliveredThreadKey as libDeliveredThreadKey,
   gate as libGate,
   listSessions as libListSessions,
+  historyMessageText,
   makeIdempotentSend,
   mergeAttachmentTextIntoInbound,
   PERMISSION_REPLY_RE,
@@ -1715,7 +1716,7 @@ async function executeFetchMessages(
         ts: m.ts,
         user: userName,
         user_id: m.user,
-        text: m.text,
+        text: historyMessageText(m),
         thread_ts: m.thread_ts,
         files: m.files?.map((f: any) => ({
           name: f.name,
@@ -1834,7 +1835,7 @@ async function executeFetchUserDms(
         ts: m.ts,
         user: userName,
         user_id: m.user,
-        text: m.text,
+        text: historyMessageText(m),
         files: m.files?.map((f: any) => ({
           name: f.name,
           mimetype: f.mimetype,
@@ -1923,7 +1924,7 @@ async function executeFetchUserConversation(
         ts: m.ts,
         user: userName,
         user_id: m.user,
-        text: m.text,
+        text: historyMessageText(m),
         files: m.files?.map((f: any) => ({
           name: f.name,
           mimetype: f.mimetype,
