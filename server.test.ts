@@ -45,6 +45,7 @@ import {
   extractSlackErrorCode,
   findSecretDeclaration,
   flattenSlackAttachments,
+  historyMessageText,
   slackTableToText,
   type GateOptions,
   gate,
@@ -16656,5 +16657,26 @@ describe('deriveRoleForSender', () => {
     const { deriveRoleForSender } = await loadLib()
     expect(deriveRoleForSender('U12345EXTRA', 'U12345')).toBe('contributor')
     expect(deriveRoleForSender('U12345', 'U12345EXTRA')).toBe('contributor')
+  })
+})
+
+describe('historyMessageText — fetch/history attachment flattening', () => {
+  test('non-empty text passes through', () => {
+    expect(historyMessageText({ text: 'hi' })).toBe('hi')
+  })
+  test('empty text + no attachments → returns as-is', () => {
+    expect(historyMessageText({ text: '' })).toBe('')
+    expect(historyMessageText({})).toBeUndefined()
+  })
+  test('empty text + table attachment → flattened rows', () => {
+    const out = historyMessageText({
+      text: '',
+      attachments: [
+        { blocks: [{ type: 'table', rows: [[{ type: 'raw_text', text: 'A' }, { type: 'raw_text', text: 'x' }]] }] },
+      ],
+    })
+    // flattenSlackAttachments prefixes a provenance marker; the table renders
+    // as tab-separated cells within it.
+    expect(out).toContain('A\tx')
   })
 })

@@ -2064,6 +2064,18 @@ export function slackTableToText(block: Record<string, unknown>): string {
     .trim()
 }
 
+/** A history message's `text`, or — when empty (Slack table/rich blocks and
+ *  forwarded content live in `attachments`, not `text`) — a flattened
+ *  rendering, so fetch_messages / history shows content instead of "". */
+export function historyMessageText(m: {
+  text?: string
+  attachments?: unknown
+}): string | undefined {
+  if (m.text && m.text.trim()) return m.text
+  const flat = flattenSlackAttachments(m.attachments)
+  return flat ? flat.text : m.text
+}
+
 export function flattenSlackAttachments(
   attachments: unknown,
   opts: { perCap?: number; totalCap?: number } = {},
