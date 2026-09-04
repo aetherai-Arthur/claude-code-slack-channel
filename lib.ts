@@ -2032,6 +2032,38 @@ export function mergeAttachmentTextIntoInbound(
   return text ? `${text}\n\n${flat.text}` : flat.text
 }
 
+/** Render a Slack `table` block (rows → cells) as tab-separated rows so the
+ *  agent can read pasted/composer tables. Cells are `raw_text` ({text}) or
+ *  `rich_text` (nested rich_text_section → text elements). */
+export function slackTableToText(block: Record<string, unknown>): string {
+  const rows = block?.rows
+  if (!Array.isArray(rows)) return ''
+  const cell = (c: unknown): string => {
+    if (c == null) return ''
+    if (typeof c === 'string') return c
+    if (Array.isArray(c)) return c.map(cell).join('')
+    if (typeof c === 'object') {
+      const o = c as Record<string, unknown>
+      if (o.type === 'emoji' && typeof o.name === 'string') return `:${o.name}:`
+      if (typeof o.text === 'string') return o.text // text / raw_text leaf
+      const parts: string[] = []
+      for (const k of ['elements', 'rich_text'] as const) {
+        if (Array.isArray(o[k])) parts.push((o[k] as unknown[]).map(cell).join(''))
+      }
+      return parts.join('')
+    }
+    return ''
+  }
+  return (rows as unknown[])
+    .map((row) =>
+      (Array.isArray(row) ? row : [row])
+        .map((c) => cell(c).replace(/[ \t]+/g, ' ').trim())
+        .join('\t'),
+    )
+    .join('\n')
+    .trim()
+}
+
 export function flattenSlackAttachments(
   attachments: unknown,
   opts: { perCap?: number; totalCap?: number } = {},
@@ -2055,6 +2087,13 @@ export function flattenSlackAttachments(
       parts.push(attText)
     } else if (Array.isArray(att.blocks)) {
       for (const block of att.blocks as Array<Record<string, unknown>>) {
+        // `table` blocks (WYSIWYG / pasted tables) carry no `.text` — their
+        // content is in `rows` → cells. Render as tab-separated rows.
+        if (block?.type === 'table') {
+          const t = slackTableToText(block)
+          if (t.length) parts.push(t)
+          continue
+        }
         const textField = block?.text as unknown
         const inner =
           typeof textField === 'string'

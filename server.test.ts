@@ -45,6 +45,7 @@ import {
   extractSlackErrorCode,
   findSecretDeclaration,
   flattenSlackAttachments,
+  slackTableToText,
   type GateOptions,
   gate,
   generateCode,
@@ -1906,6 +1907,41 @@ describe('flattenSlackAttachments', () => {
   test('handles plain-string block.text (not object)', () => {
     const out = flattenSlackAttachments([{ blocks: [{ text: 'stringy block' }] }])
     expect(out!.text).toContain('stringy block')
+  })
+
+  test('flattens a `table` block (rows → cells) — carries no .text', () => {
+    // Real Slack composer/pasted-table shape: content is in rows, not .text.
+    const out = flattenSlackAttachments([
+      {
+        blocks: [
+          {
+            type: 'table',
+            rows: [
+              [
+                { type: 'rich_text', elements: [{ type: 'rich_text_section', elements: [{ type: 'text', text: 'Story A', style: { bold: true } }] }] },
+                { type: 'raw_text', text: 'https://app.clickup.com/t/aaa' },
+              ],
+              [
+                { type: 'raw_text', text: 'Story B' },
+                { type: 'raw_text', text: 'https://app.clickup.com/t/bbb' },
+              ],
+            ],
+          },
+        ],
+      },
+    ])
+    expect(out!.text).toContain('Story A\thttps://app.clickup.com/t/aaa')
+    expect(out!.text).toContain('Story B\thttps://app.clickup.com/t/bbb')
+  })
+
+  test('slackTableToText: raw_text + rich_text cells, ignores non-tables', () => {
+    expect(slackTableToText({ type: 'section' })).toBe('')
+    expect(
+      slackTableToText({
+        type: 'table',
+        rows: [[{ type: 'raw_text', text: 'a' }, { type: 'raw_text', text: 'b' }]],
+      }),
+    ).toBe('a\tb')
   })
 
   test('skips attachments with no usable content', () => {
