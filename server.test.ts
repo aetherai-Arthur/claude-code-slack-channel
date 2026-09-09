@@ -75,6 +75,7 @@ import {
   type Session,
   type SessionKey,
   sanitizeDisplayName,
+  attachmentOutName,
   sanitizeFilename,
   saveSession,
   secretNameFromPlaceholder,
@@ -2042,6 +2043,21 @@ describe('mergeAttachmentTextIntoInbound', () => {
 // ---------------------------------------------------------------------------
 // sanitizeFilename()
 // ---------------------------------------------------------------------------
+
+describe('attachmentOutName', () => {
+  test('single file keeps the legacy <ts>_<name> shape', () => {
+    expect(attachmentOutName('1788944234.064519', 'image.png', 0, 1)).toBe('1788944234_064519_image.png')
+  })
+
+  test('multiple files get a 1-based index before the extension so same-named pastes do not overwrite', () => {
+    expect(attachmentOutName('1788944234.064519', 'image.png', 0, 3)).toBe('1788944234_064519_image_1.png')
+    expect(attachmentOutName('1788944234.064519', 'image.png', 2, 3)).toBe('1788944234_064519_image_3.png')
+  })
+
+  test('extension-less names get the index appended', () => {
+    expect(attachmentOutName('1.2', 'README', 1, 2)).toBe('1_2_README_2')
+  })
+})
 
 describe('sanitizeFilename', () => {
   test('strips square brackets', () => {

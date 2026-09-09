@@ -68,6 +68,7 @@ import {
   resolveJournalPath,
   type SenderRole,
   sanitizeDisplayName,
+  attachmentOutName,
   sanitizeFilename,
   stripBotMention,
   type ThreadRootInfo,
@@ -2265,7 +2266,7 @@ async function executeDownloadAttachment(
   }
 
   const paths: string[] = []
-  for (const file of msg.files) {
+  for (const [index, file] of (msg.files as any[]).entries()) {
     const url = file.url_private_download || file.url_private
     if (!url) continue
 
@@ -2277,7 +2278,7 @@ async function executeDownloadAttachment(
     if (!isSlackFileUrl(url)) continue
 
     const safeName = sanitizeFilename(file.name || `file_${Date.now()}`)
-    const outPath = join(ctx.INBOX_DIR, `${messageTs.replace('.', '_')}_${safeName}`)
+    const outPath = join(ctx.INBOX_DIR, attachmentOutName(messageTs, safeName, index, msg.files.length))
 
     const resp = await fetch(url, {
       headers: { Authorization: `Bearer ${ctx.botToken}` },

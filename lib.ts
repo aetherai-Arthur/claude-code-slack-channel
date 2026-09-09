@@ -1629,6 +1629,23 @@ export function sanitizeFilename(name: string): string {
 }
 
 /**
+ * Inbox filename for the i-th attachment of a message. Slack names every
+ * clipboard-pasted image `image.png`, so a message with several pasted
+ * images used to collapse into one file (each download overwrote the
+ * last). When a message carries more than one file, insert a 1-based
+ * index before the extension so `image.png` ×3 become `image_1.png`,
+ * `image_2.png`, `image_3.png`. Single-file messages keep the old name.
+ */
+export function attachmentOutName(messageTs: string, safeName: string, index: number, total: number): string {
+  const prefix = messageTs.replace('.', '_')
+  if (total <= 1) return `${prefix}_${safeName}`
+  const dot = safeName.lastIndexOf('.')
+  const stem = dot > 0 ? safeName.slice(0, dot) : safeName
+  const ext = dot > 0 ? safeName.slice(dot) : ''
+  return `${prefix}_${stem}_${index + 1}${ext}`
+}
+
+/**
  * Scrubs a Slack-provided display / real / username before it gets embedded
  * into the <channel ...> meta attributes that are passed to Claude. Slack
  * display names are attacker-controlled: a workspace member can set their
